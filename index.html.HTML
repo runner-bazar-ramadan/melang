@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Runner Bazar Ramadan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        #map { height: 220px; border-radius: 1.5rem; z-index: 10; border: 2px solid #f1f5f9; }
+        .nested-content { display: none; }
+        .nested-content.active { display: block; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .limit-error { border-color: #ef4444 !important; background-color: #fef2f2; }
+    </style>
+</head>
+<body class="bg-slate-50 flex justify-center items-start min-h-screen p-4">
+
+    <div class="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden p-8 border border-gray-100">
+        
+        <div class="flex flex-col items-center mb-6">
+            <h1 class="text-2xl font-extrabold text-orange-600 uppercase tracking-tighter text-center">Runner Bazar Ramadan</h1>
+            <div class="text-[10px] text-gray-400 space-y-1 mt-2 text-center font-medium">
+                <p>ⓘ Pembayaran secara QR sahaja</p>
+                <p>ⓘ Pesanan selepas 4 PM tidak dijamin sampai sebelum berbuka</p>
+        </div>
+        </div>
+
+        <div class="space-y-5 text-sm">
+            <div class="bg-slate-100 p-3 rounded-xl text text-center">
+                <p class="font-bold text-slate-700">Lokasi Bazar: <span class="font-thin text-black-600">Bazar Melang (Dataran McD)</span></p>
+            </div>
+            <div>
+                <label class="block font-extrabold text-slate-700 mb-1 ml-1">Nama:</label>
+                <input type="text" id="custName" class="w-full border-2 border-slate-100 rounded-2xl px-5 py-3 outline-none focus:border-orange-500 shadow-sm" placeholder="Masukkan nama anda">
+            </div>
+
+            <div class="space-y-3">
+                <label class="block font-extrabold text-slate-700 ml-1">Nak antar kek mano ni?</label>
+                <div id="map"></div>
+                <button type="button" onclick="getLocation()" class="w-full bg-sky-500 text-white font-bold py-2 rounded-xl text-xs shadow-md">📍 Ambil Lokasi GPS Saya</button>
+                
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1 text-xs ml-1">Remarks:</label>
+                    <textarea id="orderRemark" rows="2" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2 text-xs outline-none focus:border-orange-500" placeholder="No rumah/arahan penghantaran"></textarea>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block font-extrabold text-slate-700 ml-1">Pilih Pesanan:</label>
+                <div id="storeContainer" class="space-y-2">
+                    </div>
+            </div>
+<div id="summaryContainer" class="hidden mb-4 bg-white border-2 border-orange-100 rounded-[2rem] p-5 shadow-sm">
+    <h3 class="font-extrabold text-slate-700 text-xs mb-3 uppercase tracking-wider flex items-center gap-2">
+        🛒 Ringkasan Pesanan:
+    </h3>
+    <div id="orderList" class="space-y-2 text-[11px] max-h-40 overflow-y-auto pr-2">
+        </div>
+</div>
+            <div id="priceBox" class="bg-amber-50 rounded-[2rem] p-5 space-y-2 border border-amber-100">
+                <div class="flex justify-between text-slate-600 font-bold">
+                    <span>Jarak:</span> 
+                    <span id="distText">0.00 km</span>
+                </div>
+                <div id="distWarning" class="hidden text-[10px] text-red-600 font-bold bg-red-50 p-2 rounded-lg text-center underline italic">
+                    MAAF! JARAK MELEBIHI 10KM. KAMI TIDAK DAPAT MENGHANTAR.
+                </div>
+                <div class="flex justify-between text-slate-500 text-xs"><span>Upah Runner (Flat Rate):</span> <span>RM 3.00</span></div>
+                <div class="flex justify-between text-slate-500 text-xs"><span>Caj Penghantaran:</span> <span id="delText">RM 0.00</span></div>
+                <div class="pt-2 border-t border-amber-200">
+                    <div class="flex justify-between font-extrabold text-xl text-slate-900 uppercase">
+                        <span>Total:</span>
+                        <span id="totalPrice" class="text-orange-600">RM 0.00</span>
+                    </div>
+                    <p class="text-[9px] text-red-500 mt-1 font-bold italic uppercase">*Pembayaran secara QR sahaja</p> 
+                    <p class="text-[9px] text-red-500 mt-1 font-bold italic uppercase">*JIKA KEDAI KEHABISAN STOK/TUTUP, ORDER TERSEBUT AUTOMATIK DIBUANG</p>
+                </div>
+            </div>
+
+            <button id="btnSend" onclick="sendOrder()" class="w-full bg-emerald-500 text-white font-extrabold py-4 rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-widest">
+                Hantar Pesanan
+            </button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        function checkOperatingHours() {
+    const sekarang = new Date();
+    const jam = sekarang.getHours();
+    
+    // Kita set: Boleh order dari pukul 8 pagi sampai 5:30 petang sahaja
+    // Lepas 5:30 petang (17:30) sampai subuh, butang akan disable
+    const jamMula = 8;
+    const jamTutup = 16;
+    const minitTutup = 30;
+
+    const totalMinitSekarang = (jam * 60) + sekarang.getMinutes();
+    const totalMinitMula = jamMula * 60;
+    const totalMinitTutup = (jamTutup * 60) + minitTutup;
+
+    const btnSend = document.getElementById('btnSend');
+
+    if (totalMinitSekarang < totalMinitMula || totalMinitSekarang >= totalMinitTutup) {
+        btnSend.disabled = true;
+        btnSend.innerHTML = "SISTEM PESANAN DITUTUP<p class='text-[13px]'>(Buka 8AM - 5:30PM)</p>";
+        btnSend.classList.replace('bg-emerald-500', 'bg-slate-400');
+        
+        // Tambah nota sikit bawah butang supaya orang tak pelik
+        if(!document.getElementById('closedNote')) {
+            const note = document.createElement('p');
+            note.id = 'closedNote';
+            note.className = "text-[10px] text-center text-red-500 mt-2 italic font-bold";
+            note.innerText = "Sila cuci mata dulu, order dibuka esok pagi!";
+            btnSend.parentNode.appendChild(note);
+        }
+    }
+}
+        
+        function removeItem(itemName, stallName) {
+    // Cari semua input qty
+    const inputs = document.querySelectorAll('.qty-input');
+    
+    inputs.forEach(input => {
+        // Jika nama item dan nama gerai sepadan, set jadi 0
+        if (input.getAttribute('data-name') === itemName && 
+            input.getAttribute('data-stall') === stallName) {
+            input.value = 0;
+        }
+    });
+    
+    // Kemas kini harga dan senarai summary secara automatik
+    updatePrice();
+}
+        // --- DATA STRUCTURE (Kedai > Gerai > Menu) ---
+        const storesData = [
+            {
+                name: "Pilihan Gerai",
+                stalls: [
+                    {
+                        name:"Along Cakoi & Pau",
+                        image: "https://i.postimg.cc/J0XdkKRr/along-cakoi-pau.jpg", // Masukkan link gambar gerai
+                        items: [
+                            { name: "Set Original - Cakoi 5 pcs (free 1 kuah)", price: 3.00 },
+                            { name: "Set Original - Cakoi 10 pcs (free 2 kuah)", price: 6.00 },
+                            { name: "Baby Cakoi 15 pcs (free 2 kuah)", price: 6.00 },
+                            { name: "Set Special - Cakoi Chocolate Cheese 5 pcs ", price: 7.00 },
+                            { name: "Set Special - Cakoi Caramel Cheese 5 pcs ", price: 7.00 },
+                            { name: "Set Special - Mix Flavour ", price: 7.00 },
+                            { name: "Pau Goreng Berinti 5 pcs - Kacang merah ", price: 4.00 },
+                            { name: "Pau Goreng Berinti 5 pcs - Sambal Bilis ", price: 4.00 },
+                            { name: "Pau Goreng Berinti 5 pcs - Kaya ", price: 4.00 },
+                            { name: "Pau Goreng Berinti 5 pcs - Inti Daging ", price: 4.00 },
+                            { name: "Pau Goreng Berinti 5 pcs - Inti Ayam ", price: 4.00 }
+                           
+
+                        ]
+                    },
+                    {
+                        name:"Ayam Golek Ghobok",
+                        image: "https://i.postimg.cc/hvm3dMK7/ayam-golek-ghobok.jpg", // Masukkan link gambar gerai
+                        items: [
+                            { name: "Ayam Golek - seekor", price: 25.00 },
+                            { name: "Ayam Golek - separuh", price: 13.00 },
+                            { name: "Ayam Golek - suku(1/4)", price: 8.00 },
+                            { name: "Nasi Butter Ayam Golek", price: 10.00 },
+                            { name: "Add on - Sos", price: 2.00 }
+                        ]
+                    },
+                    {
+                        name:"Ayam Goreng Muiz",
+                        image: "https://i.postimg.cc/3NGbv93v/ayam-goreng-muiz.jpg",
+                        items: [
+                            { name: "Regular Box - Original 2 pcs", price: 9.00 },
+                            { name: "Regular Box - Cheese 2 pcs", price: 11.00 },
+                            { name: "Regular Box - Korean Spicy 2 pcs", price: 12.00 },
+                            { name: "Regular Box - Korean Cheese 2 pcs", price: 13.00 },
+                            { name: "Happy Box - Original 5 pcs", price: 22.00 },
+                            { name: "Happy Box - Cheese 5 pcs", price: 26.00 },
+                            { name: "Happy Box - Korean Spicy 5 pcs", price: 28.00 },
+                            { name: "Happy Box - Korean Cheese 5 pcs", price: 30.00 }
+                        ]
+                    },
+                    {
+                        name:"Bunga59Cafe",
+                        image: "https://i.postimg.cc/SN10q1xH/bunga59.jpg",
+                        items: [
+                            { name: "Nasi Ayam Penyet", price: 10.00 },
+                            { name: "Nasi Ayam Gepuk", price: 11.00 },
+                            { name: "Daging Dendeng", price: 13.00 },
+                            { name: "Quesillo", price: 10.00 },
+                            { name: "Caramel Puding", price: 3.00 },
+                            { name: "Loaded Potato", price: 7.00 },
+                            { name: "Matcha Latte", price: 10.00 },
+                            { name: "Kreamy Matcha Latte", price: 11.00 },
+                            { name: "Matcha Lemonade", price: 10.00 },
+                            { name: "Soda Matcha", price: 11.00 },
+                            { name: "Matcho Latte", price: 12.00 },
+                            { name: "Strawberry Matcha Latte", price: 12.00 },
+                            { name: "Mango Matcha Latte", price: 12.00 },
+                            { name: "Peach Matcha Latte", price: 12.00 },
+                            { name: "Blueberry Matcha Latte", price: 12.00 }
+                        
+
+                        ]
+                    },
+                    {
+                        name:"Fiona BBQ Chicken",
+                        image: "https://i.postimg.cc/5yzkCpfz/fiona-bbq-chicken.jpg",
+                        items: [
+                            { name: "Nasi Ayam Madu", price: 8.00 },
+                            { name: "Nasi Tomato", price: 8.00 },
+                            { name: "Nasi Ayam King", price: 12.00 },
+                            { name: "Nasi Tomato King", price: 12.00 },
+                            { name: "Lokching (secucuk)", price: 3.00 },
+                            { name: "Sosej Thai (secucuk)", price: 3.00 },
+                            { name: "Ayam Percik Madu (seketul)", price: 5.00 },
+                            { name: "Nasi extra", price: 3.00 },
+                            { name: "Whole Leg", price: 10.00 }
+                        ]
+                    },
+                    {
+                        name:"Mansor Soya",
+                        image: "https://i.postimg.cc/PxyrTbcN/Mansor-Soya.jpg",
+                        items: [
+                            { name: "Tau Fu Fa - Kecil", price: 2.00 },
+                            { name: "Tau Fu Fa - Besar", price: 4.00 },
+                            { name: "Air Soya - Kecil", price: 3.00 },
+                            { name: "Air Soya - Besar", price: 5.00 }
+                            
+                        ]
+                    },
+                    {
+                        name:"Laksa Penang Kuala Pilah",
+                        image: "https://i.postimg.cc/C586qJwj/laksa-penang-kuala-pilah.jpg",
+                        items: [
+                            { name: "Laksa Penang", price: 7.00 }
+                            
+                        ]
+                    },
+                    {
+                        name:"Air Tebu Che Amin",
+                        image: "https://i.postimg.cc/DwRSMgkf/Kedai-Air-Che-Amir.jpg",
+                        items: [
+                            { name: "Air Tebu - 1 jug", price: 8.00 },
+                            { name: "Air Cincau", price: 3.00 },
+                            { name: "Air Teh Bunga", price: 3.00 }
+                        
+                        ]
+                    },
+                    {
+                        name:"Murtabak King",
+                        image: "https://i.postimg.cc/8kfY9kMZ/murtabak-king.jpg",
+                        items: [
+                            { name: "Murtabak Ayam", price: 5.00 },
+                            { name: "Murtabak Daging", price: 5.00 },
+                            { name: "Murtabak King", price: 10.00 },
+                            { name: "Murtabak Carbonara", price: 10.00 },
+                            { name: "Murtabak Kambing", price: 10.00 },
+                            { name: "Roti Sarang Burung (Ayam & Daging)", price: 6.00 },
+                            { name: "Roti Boom", price: 3.00 }
+                        ]
+                    },
+                    {
+                        name:"Nasi Putih Ayam Kicap",
+                        image: "https://i.postimg.cc/SQYP3QC3/nasi-putih-ayam-kicap.jpg",
+                        items: [ 
+                            { name: "Nasi Putih Ayam Kicap", price: 8.00 }
+                        ]
+                    },
+                    {
+                        name:"Pak Teh Satay",
+                        image: "https://i.postimg.cc/3r0qVr2M/pak-teh-satay.jpg",
+                        items: [
+                            { name: "Satay Ayam", price: 1.20 },
+                            { name: "Satay Daging", price: 1.40 },
+                            { name: "Satay Kambing", price: 2.00 },
+                            { name: "Satay Perut", price: 2.00 },
+                            { name: "Satay Tulang", price: 1.50 },
+                            { name: "Nasi Impit", price: 0.70 }
+                        ]
+                    },
+                    {
+                        name:"Roti John Kopi Desa",
+                        image: "https://i.postimg.cc/05K4F57q/roti-john-kopi-desa.jpg",
+                        items: [
+                            { name: "Roti John Ayam", price: 8.00 },
+                            { name: "Roti John Daging", price: 8.00 },
+                            { name: "Roti John Kambing", price: 12.00 },
+                            { name: "Roti John Mix (Ayam + Daging)", price: 10.00 },
+                            { name: "Roti John Special (Ayam + Daging + Cheese) ", price: 12.00 },
+                            { name: "Roti John Pattaya (Ayam + Daging + Cheese + Balut Telur)", price: 15.00 }
+                        ]
+                    },
+                    {
+                        name:"Satar Ikan & Otak-otak",
+                        image: "https://i.postimg.cc/Df4NHf12/warisan-el-resources.jpg",
+                        items: [
+                            { name: "Satar Ikan (secucuk)", price: 3.50 },
+                            { name: "Otak-otak (sekeping)", price: 1.20 },
+                            { name: "Otak-otak (9 keping)", price: 10.00 }
+                        ]
+                    }
+                    
+                ]
+            },
+            
+            
+        ];
+
+        const mcdCoords = [2.7344203, 102.2347215];
+        let map, marker, currentDist = 0;
+
+        function initApp() {
+            checkOperatingHours(); // Tambah ni supaya dia check sebaik saja web dibuka
+    // ... coding map dan store kau yang lain ...
+        }
+            // Init Map
+            map = L.map('map', { attributionControl: false }).setView(mcdCoords, 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            marker = L.marker(mcdCoords, { draggable: true }).addTo(map);
+            marker.on('dragend', updatePrice);
+
+            // Render Stores
+            const container = document.getElementById('storeContainer');
+            storesData.forEach((store, sIdx) => {
+                let stallsHtml = store.stalls.map((stall, gIdx) => `
+                    <div class="border-t border-slate-100 mt-2 pt-2">
+                        <button onclick="toggleSection('stall-${sIdx}-${gIdx}')" class="w-full flex items-center justify-between text-left p-2 bg-orange-50 rounded-lg text-xs font-bold text-orange-700">
+                            ${stall.name} <span>▼</span>
+                        </button>
+                        <div id="stall-${sIdx}-${gIdx}" class="nested-content p-2 space-y-3">
+                            <div class="w-full aspect-video bg-slate-200 rounded-xl overflow-hidden shadow-inner border border-slate-300">
+                                <img src="${stall.image}" class="w-full h-full object-cover">
+                            </div>
+                            <div class="space-y-2">
+                                ${stall.items.map((item, iIdx) => `
+                                    <div class="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-50">
+                                        <div class="text-[11px]">
+                                            <p class="font-bold">${item.name}</p>
+                                            <p class="text-orange-500">RM ${item.price.toFixed(2)}</p>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="number" data-name="${item.name}" data-price="${item.price}" data-stall="${stall.name}"
+                                                class="qty-input w-12 border border-slate-200 rounded p-1 text-center font-bold text-xs"
+                                                value="0" min="0" onchange="updatePrice()">
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                container.innerHTML += `
+                    <div class="border-2 border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                        <button onclick="toggleSection('store-${sIdx}')" class="w-full p-4 flex justify-between items-center font-extrabold bg-slate-100 text-slate-800">
+                            ${store.name} <span>▼</span>
+                        </button>
+                        <div id="store-${sIdx}" class="nested-content p-2">
+                            ${stallsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+        
+
+        function toggleSection(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('active');
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((p) => {
+                    const pos = [p.coords.latitude, p.coords.longitude];
+                    marker.setLatLng(pos);
+                    map.setView(pos, 16);
+                    updatePrice();
+                });
+            }
+        }
+
+        function updatePrice() {
+    const pos = marker.getLatLng();
+    const R = 6371;
+    const dLat = (pos.lat - mcdCoords[0]) * Math.PI / 180;
+    const dLon = (pos.lng - mcdCoords[1]) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(mcdCoords[0]*Math.PI/180)*Math.cos(pos.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+    currentDist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    
+    const distText = document.getElementById('distText');
+    const distWarning = document.getElementById('distWarning');
+    const btnSend = document.getElementById('btnSend');
+    const priceBox = document.getElementById('priceBox');
+
+    distText.innerText = `${currentDist.toFixed(2)} km`;
+
+    if (currentDist > 10) {
+        distWarning.classList.remove('hidden');
+        btnSend.disabled = true;
+        btnSend.classList.add('bg-slate-400');
+        priceBox.classList.add('limit-error');
+    } else {
+        distWarning.classList.add('hidden');
+        btnSend.disabled = false;
+        btnSend.classList.remove('bg-slate-400');
+        priceBox.classList.remove('limit-error');
+    }
+    
+    // Dapatkan nilai jarak tepat dengan 2 titik perpuluhan
+    let distFixed = parseFloat(currentDist.toFixed(2));
+    
+    // Asingkan nombor bulat dan nombor perpuluhan
+    let decimalPart = distFixed - Math.floor(distFixed);
+
+    // Kalau perpuluhan 0.50 ke bawah (contoh: 3.1 - 3.5), kekal nombor bawah
+    // Kalau perpuluhan 0.51 ke atas (contoh: 3.6 - 3.9), bundar ke atas
+    let roundedDist = (decimalPart <= 0.50) ? Math.floor(distFixed) : Math.ceil(distFixed);
+
+    // Kira harga (Minimum RM3 untuk 3km pertama, tambah RM1 setiap km seterusnya)
+    let delFee = (roundedDist <= 3) ? 3 : 3 + (roundedDist - 3) * 1; 
+    document.getElementById('delText').innerText = `RM ${delFee.toFixed(2)}`;
+
+    let foodTotal = 0;
+    let summaryHtml = "";
+    const summaryContainer = document.getElementById('summaryContainer');
+    const orderList = document.getElementById('orderList');
+
+    document.querySelectorAll('.qty-input').forEach(input => {
+        let qty = parseInt(input.value) || 0;
+        if (qty > 0) {
+            let itemName = input.getAttribute('data-name');
+            let itemPrice = parseFloat(input.getAttribute('data-price'));
+            let stallName = input.getAttribute('data-stall');
+            foodTotal += qty * itemPrice;
+
+            // --- TAMBAH BUTANG DELETE DI SINI ---
+            summaryHtml += `
+                <div class="flex justify-between items-center border-b border-slate-50 py-2">
+                    <div class="flex-1">
+                        <p class="font-bold text-slate-800">${itemName}</p>
+                        <p class="text-[9px] text-slate-400 uppercase">${stallName}</p>
+                    </div>
+                    <div class="flex items-center gap-3 ml-4">
+                        <div class="text-right">
+                            <p class="font-bold text-orange-600 leading-none">${qty}x</p>
+                            <p class="text-[9px] text-slate-500">RM ${(qty * itemPrice).toFixed(2)}</p>
+                        </div>
+                        <button onclick="removeItem('${itemName}', '${stallName}')" class="text-red-400 hover:text-red-600 p-1 text-lg">
+                            ❌
+                        </button>
+                    </div>
+                </div>`;
+        }
+    });
+
+    if (foodTotal > 0) {
+        summaryContainer.classList.remove('hidden');
+        orderList.innerHTML = summaryHtml;
+    } else {
+        summaryContainer.classList.add('hidden');
+    }
+
+    const finalTotal = (foodTotal > 0) ? (foodTotal + 3 + delFee) : 0;
+    document.getElementById('totalPrice').innerText = `RM ${finalTotal.toFixed(2)}`;
+}
+
+        function sendOrder() {
+    // 1. AMBIL DATA DULU (WAJIB KAT ATAS)
+    const name = document.getElementById('custName').value;
+    const remark = document.getElementById('orderRemark').value;
+    
+    if(!name) return alert("Sila isi nama!");
+    if(currentDist === 0) return alert("Sila set lokasi GPS rumah anda!");
+
+    // 2. KIRA PESANAN
+    let ordersByStall = {};
+    let hasOrder = false;
+
+    document.querySelectorAll('.qty-input').forEach(input => {
+        let qty = parseInt(input.value) || 0;
+        if(qty > 0) {
+            hasOrder = true;
+            let stallName = input.getAttribute('data-stall');
+            let itemName = input.getAttribute('data-name');
+            
+            if (!ordersByStall[stallName]) {
+                ordersByStall[stallName] = [];
+            }
+            ordersByStall[stallName].push(`${qty}x ${itemName}`);
+        }
+    });
+
+    if(!hasOrder) return alert("Sila pilih menu!");
+
+    // 3. BINA TEKS & LINK
+    const pos = marker.getLatLng();
+    const mapLink = `https://www.google.com/maps?q=${pos.lat},${pos.lng}`;
+    
+    let pesananText = "";
+    for (let stall in ordersByStall) {
+        pesananText += `*${stall.toUpperCase()}*:\n`;
+        pesananText += ordersByStall[stall].join('\n') + `\n\n`;
+    }
+
+    const totalPriceStr = document.getElementById('totalPrice').innerText;
+
+    const msg = `*PESANAN RUNNER BAZAR RAMADAN*\n` +
+                `Nama: ${name}\n` +
+                `Jarak: ${currentDist.toFixed(2)}km\n` +
+                `Remark: ${remark || '-'}\n` +
+                `Lokasi: ${mapLink}\n\n` +
+                `*PESANAN:*\n${pesananText}` +
+                `*TOTAL: ${totalPriceStr}*`;
+
+    // 4. SIMPAN KE GOOGLE SHEET & BUKA WHATSAPP
+    const sheetData = {
+        name: name,
+        distance: currentDist.toFixed(2),
+        orders: pesananText,
+        total: totalPriceStr,
+        remark: remark || '-',
+        location: mapLink
+    };
+
+    // Button loading state (Optional tapi bagus)
+    const btnSend = document.getElementById('btnSend');
+    const originalText = btnSend.innerHTML;
+    btnSend.innerText = "SEDANG MENGHANTAR...";
+    btnSend.disabled = true;
+
+    fetch('https://script.google.com/macros/s/AKfycbwAwhCEO8tJX6o1RNiBfH0BIBCldcHghIWzILtQIWdKalhTK0VAhtpiD6hXO6rZPIJWzA/exec', {
+        method: 'POST',
+        mode: 'no-cors', // Tambah ni kalau Apps Script kau jenis simple POST
+        body: JSON.stringify(sheetData)
+    }).then(() => {
+        console.log("Data saved to Sheet");
+        window.open(`https://wa.me/60172865030?text=${encodeURIComponent(msg)}`);
+        
+        // Reset button
+        btnSend.innerHTML = originalText;
+        btnSend.disabled = false;
+    }).catch(err => {
+        console.error("Error:", err);
+        // Kalau error pun, kita buka WhatsApp juga supaya customer tak sangkut
+        window.open(`https://wa.me/60196472875?text=${encodeURIComponent(msg)}`);
+        btnSend.innerHTML = originalText;
+        btnSend.disabled = false;
+    });
+}
+        
+        window.onload = initApp;
+    </script>
+</body>
+</html>
