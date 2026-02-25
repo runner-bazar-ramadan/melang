@@ -535,19 +535,23 @@
 
     fetch('https://script.google.com/macros/s/AKfycbwAwhCEO8tJX6o1RNiBfH0BIBCldcHghIWzILtQIWdKalhTK0VAhtpiD6hXO6rZPIJWzA/exec', {
         method: 'POST',
-        mode: 'no-cors', // Tambah ni kalau Apps Script kau jenis simple POST
+        mode: 'no-cors',
         body: JSON.stringify(sheetData)
     }).then(() => {
         console.log("Data saved to Sheet");
-        window.open(`https://wa.me/60196472875?text=${encodeURIComponent(msg)}`);
+        
+        // TUKAR DI SINI: Guna window.location.href ganti window.open
+        window.location.href = `https://wa.me/60196472875?text=${encodeURIComponent(msg)}`;
         
         // Reset button
         btnSend.innerHTML = originalText;
         btnSend.disabled = false;
     }).catch(err => {
         console.error("Error:", err);
-        // Kalau error pun, kita buka WhatsApp juga supaya customer tak sangkut
-        window.open(`https://wa.me/60196472875?text=${encodeURIComponent(msg)}`);
+        
+        // TUKAR DI SINI JUGA
+        window.location.href = `https://wa.me/60196472875?text=${encodeURIComponent(msg)}`;
+        
         btnSend.innerHTML = originalText;
         btnSend.disabled = false;
     });
@@ -557,4 +561,3 @@
     </script>
 </body>
 </html>
-
